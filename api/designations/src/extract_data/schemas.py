@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, List
 
 
-class Data(BaseModel):
+class Meetings(BaseModel):
     week: str = Field(...)
     bible_chapter: str = Field(...)
     music_and_introduction_words: str = Field(...)
@@ -16,6 +16,6 @@ class Data(BaseModel):
     parts_of_second_title: List[Dict]
 
     third_title: str = Field(...)
-    parts_of_third_title: str = Field(...)
+    parts_of_third_title: List[Dict]
 
-    conclusion_word: str = Field(...)
+    conclusion_words: str = Field(...)
