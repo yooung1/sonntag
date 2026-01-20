@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
 
-
 class DataScrapper:
     def __init__(self):
         try:
@@ -93,9 +92,6 @@ class DataScrapper:
     
 
     def extract_this_week(self, page) -> list[str]:
-        """
-        EXTRAIR AS REUNIOES DESTA SEMANA
-        """
         link = "https://wol.jw.org/es/wol/h/r4/lp-s"
 
         page.goto(link)
@@ -123,13 +119,58 @@ class DataScrapper:
 
         return data
     
-    @staticmethod
     def extract_all_available_weeks(self, page):
         current_year = datetime.now().year
         link = f"https://wol.jw.org/es/wol/library/r4/lp-s/biblioteca/guía-de-actividades/guía-de-actividades-{current_year}"
+        selector = "ul.directory.navCard li.row.card a.cardContainer"
+        
+        page.goto(link)
+
+        page.wait_for_selector(selector)
+        
+        locators = page.locator(selector).all()
+        
+        urls = []
+        for locator in locators:
+            href = locator.get_attribute("href")
+            if href:
+                full_url = f"https://wol.jw.org{href}"
+                urls.append(full_url)
+        
+        data = self.extract_everything_from_now(page, urls)
+        return data
+
+    def extract_everything_from_now(self, page, urls):
+        valid_links = []
+        data = []
+        current_week_text = self.get_week_extremes()
+     
+        found_current_week = False
+
+        for url in urls:
+            page.goto(url)
+            items = page.locator("#materialNav nav ul li a.cardContainer").all()
+
+            for item in items:
+                if not found_current_week:
+                    item_text = item.inner_text().lower()
+                    if current_week_text in item_text:
+                        found_current_week = True
+                
+                if found_current_week:
+                    href = item.get_attribute("href")
+                    full_url = f"https://wol.jw.org{href}" if href.startswith('/') else href
+                    valid_links.append(full_url)
+
+        for url in valid_links:
+            page.goto(url)
+            data.append(self.scrape_data(page))
+        
+        
+        return data
 
 
 
 main = DataScrapper()
 page = main.open_browser()
-main.extract_this_week(page)
+main.extract_all_available_weeks(page)
