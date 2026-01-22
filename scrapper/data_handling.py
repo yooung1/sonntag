@@ -1,4 +1,7 @@
 def process_data(input_data) -> list[dict]:
+    if not input_data:
+        return []
+        
     if isinstance(input_data[0], str):
         listas_para_processar = [input_data]
     else:
