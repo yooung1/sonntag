@@ -27,6 +27,44 @@ class DataScrapper:
 
         return page
     
+    def _cleanup_browser(self, page):
+        """Limpa todos os recursos do navegador de forma segura"""
+        try:
+            if page:
+                try:
+                    page.close()
+                except:
+                    pass
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'context') and self.context:
+                try:
+                    self.context.close()
+                except:
+                    pass
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'browser') and self.browser:
+                try:
+                    self.browser.close()
+                except:
+                    pass
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'playwright') and self.playwright:
+                try:
+                    self.playwright.stop()
+                except:
+                    pass
+        except:
+            pass
+    
     @staticmethod
     def get_week_extremes() -> str:
         target_date = datetime.now().date()
@@ -63,6 +101,7 @@ class DataScrapper:
 
 
     def extract_this_month(self):
+        page = None
         try:
             page = self.open_browser()
             data = []
@@ -94,24 +133,17 @@ class DataScrapper:
                 page.goto(url)
                 data.append(self.scrape_data(page))
             
-            page.close()
-            self.browser.close()
-            self.playwright.stop()
-            
             return process_data(data)
         except Exception as e:
             print(f"Erro em extract_this_month: {str(e)}")
-            try:
-                page.close()
-                self.browser.close()
-                self.playwright.stop()
-            except:
-                pass
             return []
+        finally:
+            self._cleanup_browser(page)
 
     
 
     def extract_this_week(self) -> list[str]:
+        page = None
         try:
             page = self.open_browser()
 
@@ -127,6 +159,9 @@ class DataScrapper:
             
             links = page.locator("ul.directory.navCard li.todayItem a.cardContainer")
         
+            # Se não encontrar o link, interrompe
+            if links.count() == 0:
+                return []
 
             count = links.count()
             
@@ -139,23 +174,16 @@ class DataScrapper:
                     break
 
             data = self.scrape_data(page)
-
-            page.close()
-            self.browser.close()
-            self.playwright.stop()
             
             return process_data(data)
         except Exception as e:
             print(f"Erro em extract_this_week: {str(e)}")
-            try:
-                page.close()
-                self.browser.close()
-                self.playwright.stop()
-            except:
-                pass
             return []
+        finally:
+            self._cleanup_browser(page)
     
     def extract_all_available_weeks(self):
+        page = None
         try:
             page = self.open_browser()
 
@@ -178,20 +206,12 @@ class DataScrapper:
             
             data = self.__extract_everything_from_now(page, urls)
 
-            page.close()
-            self.browser.close()
-            self.playwright.stop()
-            
             return process_data(data)
         except Exception as e:
             print(f"Erro em extract_all_available_weeks: {str(e)}")
-            try:
-                page.close()
-                self.browser.close()
-                self.playwright.stop()
-            except:
-                pass
             return []
+        finally:
+            self._cleanup_browser(page)
 
     def __extract_everything_from_now(self, page, urls):
         valid_links = []
@@ -221,5 +241,3 @@ class DataScrapper:
         
         
         return data
-    
-

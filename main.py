@@ -22,6 +22,11 @@ class ProgramApp:
         self.scrapper = DataScrapper()
         self.json_history = os.path.join("json", "saved_schedules.json")
         
+        # Status de extração
+        self.extraction_status = None
+        self.extraction_error = None
+        self.extracted_data = None
+        
         os.makedirs("json", exist_ok=True)
         os.makedirs("pdf", exist_ok=True)
         
@@ -412,19 +417,22 @@ class ProgramApp:
             json.dump(total, f, indent=4, ensure_ascii=False)
 
     def extract_week(self, e):
-        threading.Thread(target=self._run_task, args=(self.scrapper.extract_this_week,), daemon=True).start()
+        threading.Thread(target=self._run_task, args=(self.scrapper.extract_this_week,), daemon=False).start()
 
     def extract_month(self, e):
-        threading.Thread(target=self._run_task, args=(self.scrapper.extract_this_month,), daemon=True).start()
+        threading.Thread(target=self._run_task, args=(self.scrapper.extract_this_month,), daemon=False).start()
 
     def extract_all(self, e):
-        threading.Thread(target=self._run_task, args=(self.scrapper.extract_all_available_weeks,), daemon=True).start()
+        threading.Thread(target=self._run_task, args=(self.scrapper.extract_all_available_weeks,), daemon=False).start()
 
     def _run_task(self, task_func):
         try:
             data = task_func()
             if data:
                 self.save_to_history(data)
+                # Armazenar dados para navegação na thread principal
+                self.extracted_data = data
+                self.extraction_status = "success"
                 # Mostrar notificação de sucesso
                 self.page.snack_bar = ft.SnackBar(
                     ft.Text("✓ Dados extraídos e salvos com sucesso!", color="#22c55e"),
@@ -432,7 +440,11 @@ class ProgramApp:
                 )
                 self.page.snack_bar.open = True
                 self.page.update()
+                # Navegar para a tela de seleção na thread principal
+                self.show_selector(data)
             else:
+                self.extraction_status = "no_data"
+                self.extracted_data = None
                 # Mostrar notificação de nenhum dado
                 self.page.snack_bar = ft.SnackBar(
                     ft.Text("⚠ Nenhum dado foi encontrado", color="#f59e0b"),
@@ -441,14 +453,33 @@ class ProgramApp:
                 self.page.snack_bar.open = True
                 self.page.update()
         except Exception as e:
-            # Mostrar erro
             print(f"Erro ao extrair dados: {str(e)}")
+            self.extraction_status = "error"
+            self.extraction_error = str(e)
+            self.extracted_data = None
+            # Mostrar erro
             self.page.snack_bar = ft.SnackBar(
                 ft.Text(f"✗ Erro: {str(e)}", color="#ef4444"),
                 bgcolor="#0f172a"
             )
             self.page.snack_bar.open = True
             self.page.update()
+        finally:
+            # Limpar recursos do scraper explicitamente
+            try:
+                if hasattr(self, 'scrapper') and self.scrapper is not None:
+                    if hasattr(self.scrapper, 'playwright') and self.scrapper.playwright:
+                        try:
+                            self.scrapper.playwright.stop()
+                        except:
+                            pass
+                    if hasattr(self.scrapper, 'browser') and self.scrapper.browser:
+                        try:
+                            self.scrapper.browser.close()
+                        except:
+                            pass
+            except:
+                pass
 
     def view_saved(self, e):
         if os.path.exists(self.json_history):
