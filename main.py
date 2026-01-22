@@ -457,6 +457,239 @@ class ProgramApp:
             # self.show_selector(data)
 
 
+    def show_selector(self, data_list):
+        self.page.controls.clear()
+        
+        # Dicionário para guardar as referências dos inputs (TextFields)
+        self.input_controls = {} 
+
+        # Ordenar dados por data
+        try:
+            data_list.sort(key=lambda x: x['metadata'].get('data', ''), reverse=True)
+        except:
+            pass 
+
+        # --- Elementos de UI ---
+        self.detail_container = ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, spacing=10)
+        
+        # Placeholder inicial
+        self.detail_container.controls = [
+            ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.Icons.TOUCH_APP, size=50, color="#6366f1"),
+                    ft.Text("Selecione uma semana ao lado para editar.", color="#94a3b8")
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                alignment=ft.Alignment(0, 0),
+                expand=True,
+                padding=50
+            )
+        ]
+
+        # Função para carregar os detalhes e criar os INPUTS
+        def load_details(e, item_data):
+            self.detail_container.controls.clear()
+            self.input_controls = {} # Limpa inputs anteriores
+            
+            meta = item_data.get('metadata', {})
+            secoes = item_data.get('secoes', [])
+            
+            # Guardamos os dados brutos atuais para usar no PDF
+            self.current_data_context = item_data 
+
+            # 1. Cabeçalho
+            header = ft.Container(
+                content=ft.Row([
+                    ft.Column([
+                        ft.Text(f"Semana de {meta.get('data', 'Data N/D')}", size=22, weight=ft.FontWeight.BOLD, color="white"),
+                        ft.Text(f"Leitura: {meta.get('texto_biblico', '')}", size=14, color="#94a3b8"),
+                    ], spacing=2),
+                    ft.ElevatedButton(
+                        "Gerar PDF",
+                        icon=ft.Icons.PICTURE_AS_PDF,
+                        bgcolor="#ef4444",
+                        color="white",
+                        on_click=self.generate_pdf_action
+                    )
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                bgcolor="#1e293b", padding=20, border_radius=10
+            )
+            self.detail_container.controls.append(header)
+
+            # 2. Renderizar Seções com INPUTS
+            for secao in secoes:
+                titulo = secao.get('titulo', '').upper()
+                itens = secao.get('itens', [])
+                
+                # Inicializa lista de controles para esta seção
+                self.input_controls[titulo] = []
+
+                # Lógica de cores/ícones
+                icon = ft.Icons.CIRCLE
+                color_theme = "#94a3b8"
+                if "TESOROS" in titulo or "TESOUROS" in titulo:
+                    icon, color_theme = ft.Icons.DIAMOND, "#a5b4fc"
+                elif "MAESTROS" in titulo or "MINISTÉRIO" in titulo:
+                    icon, color_theme = ft.Icons.WORK, "#fbbf24"
+                elif "VIDA" in titulo or "CRISTIANA" in titulo:
+                    icon, color_theme = ft.Icons.FAVORITE, "#f87171"
+
+                rows_content = []
+                for idx, item_texto in enumerate(itens):
+                    # Criar TextFields para editar
+                    txt_nome = ft.TextField(label="Designado", height=40, text_size=12, expand=True, bgcolor="#0f172a", border_color="#334155")
+                    txt_ajudante = ft.TextField(label="Ajudante/Sala", height=40, text_size=12, width=150, bgcolor="#0f172a", border_color="#334155")
+                    
+                    # Guarda a referência para pegarmos o valor depois
+                    self.input_controls[titulo].append({'nome': txt_nome, 'ajudante': txt_ajudante})
+
+                    # Layout do Item
+                    rows_content.append(
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Text(item_texto, color="#e2e8f0", size=14, weight=ft.FontWeight.BOLD),
+                                ft.Row([txt_nome, txt_ajudante])
+                            ], spacing=5),
+                            padding=15,
+                            bgcolor="#1e293b", 
+                            border=ft.Border(left=ft.BorderSide(4, color_theme)),
+                            border_radius=4
+                        )
+                    )
+
+                self.detail_container.controls.append(
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Row([ft.Icon(icon, color=color_theme), ft.Text(titulo, size=16, weight=ft.FontWeight.BOLD, color=color_theme)]),
+                            ft.Column(rows_content, spacing=10)
+                        ], spacing=10),
+                        # CORREÇÃO AQUI: Substituído ft.margin.only por ft.Margin
+                        padding=10, 
+                        margin=ft.Margin(0, 0, 0, 10) 
+                    )
+                )
+
+            self.detail_container.update()
+
+        # --- Lista Lateral ---
+        date_list_view = ft.ListView(expand=True, spacing=5, padding=10)
+        for item in data_list:
+            data_str = item.get('metadata', {}).get('data', 'Sem data')
+            btn = ft.Container(
+                content=ft.Row([ft.Icon(ft.Icons.CALENDAR_TODAY, size=16, color="#94a3b8"), ft.Text(data_str, color="white", size=13)]),
+                padding=15, border_radius=8, bgcolor="#1e293b", ink=True,
+                on_click=lambda e, i=item: load_details(e, i)
+            )
+            date_list_view.controls.append(btn)
+
+        # Layout Principal
+        layout = ft.Column([
+            ft.Container(content=ft.Row([ft.IconButton(ft.Icons.ARROW_BACK, on_click=lambda _: self.show_vida_ministerio(None)), ft.Text("Voltar", size=16, weight=ft.FontWeight.BOLD)]), padding=10),
+            ft.Container(expand=True, content=ft.Row([
+                ft.Container(content=date_list_view, width=250, bgcolor="#0f172a", border=ft.Border(right=ft.BorderSide(1, "#334155"))),
+                ft.Container(content=self.detail_container, expand=True, padding=20)
+            ], expand=True))
+        ], expand=True)
+
+        self.page.add(layout)
+        self.page.update()
+
+    def generate_pdf_action(self, e):
+        """Coleta os dados dos inputs e chama o gerador de PDF"""
+        if not hasattr(self, 'current_data_context') or not self.current_data_context:
+            return
+
+        pdf_data = self.current_data_context.copy()
+        
+        # Preenche os dados com o que o usuário digitou nos TextFields
+        for secao in pdf_data['secoes']:
+            titulo = secao.get('titulo', '').upper()
+            if titulo in self.input_controls:
+                for idx, item in enumerate(secao['itens']):
+                    controls = self.input_controls[titulo][idx]
+                    
+                    secao['itens'][idx] = {
+                        'parte': item,
+                        'nome': controls['nome'].value,
+                        'ajudante': controls['ajudante'].value
+                    }
+
+        filename = f"Designacao_{pdf_data['metadata']['data'].replace(' ', '_')}.pdf"
+        filepath = os.path.join("pdf", filename)
+        self.create_pdf_file(filepath, pdf_data)
+        
+        self.page.snack_bar = ft.SnackBar(ft.Text(f"PDF salvo em: {filepath}", color="white"), bgcolor="#22c55e")
+        self.page.snack_bar.open = True
+        self.page.update()
+
+    def create_pdf_file(self, filename, data):
+        """Usa ReportLab para desenhar o PDF"""
+        doc = SimpleDocTemplate(filename, pagesize=A4)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # CORREÇÃO: Substituído colors.hexval por colors.HexColor
+        title_style = ParagraphStyle('TitleCustom', parent=styles['Title'], fontSize=18, textColor=colors.HexColor("#2c3e50"), spaceAfter=10)
+        subtitle_style = ParagraphStyle('SubtitleCustom', parent=styles['Normal'], fontSize=12, textColor=colors.gray, spaceAfter=20)
+        # Header style não estava sendo usado explicitamente, mas corrigido igual
+        
+        # Cabeçalho do PDF
+        meta = data['metadata']
+        elements.append(Paragraph(f"Designações: Semana de {meta.get('data', '')}", title_style))
+        elements.append(Paragraph(f"Leitura: {meta.get('texto_biblico', '')} | {meta.get('introducao', '')}", subtitle_style))
+        elements.append(Spacer(1, 10))
+
+        # Loop pelas seções
+        for secao in data['secoes']:
+            titulo = secao.get('titulo', '')
+            
+            # CORREÇÃO: Cores com HexColor
+            bg_color = colors.HexColor("#7f8c8d")
+            if "TESOROS" in titulo.upper(): bg_color = colors.HexColor("#6c5ce7")
+            elif "MAESTROS" in titulo.upper(): bg_color = colors.HexColor("#f1c40f")
+            elif "VIDA" in titulo.upper(): bg_color = colors.HexColor("#e74c3c")
+
+            section_title = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=12, textColor=colors.white, backColor=bg_color, borderPadding=5, spaceAfter=5)
+            elements.append(Paragraph(titulo, section_title))
+
+            # Tabela de Designações
+            table_data = []
+            table_data.append(["Parte", "Designado / Ajudante"])
+
+            for item in secao['itens']:
+                parte_txt = item.get('parte', '')
+                nome = item.get('nome', '')
+                ajudante = item.get('ajudante', '')
+                
+                full_name = nome
+                if ajudante:
+                    full_name += f" / {ajudante}"
+                
+                if not full_name.strip():
+                    full_name = "__________________________"
+
+                p_parte = Paragraph(parte_txt, styles['Normal'])
+                p_nome = Paragraph(f"<b>{full_name}</b>", styles['Normal'])
+                
+                table_data.append([p_parte, p_nome])
+
+            t = Table(table_data, colWidths=[300, 180])
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            elements.append(t)
+            elements.append(Spacer(1, 15))
+
+        if 'conclusao' in data:
+            elements.append(Paragraph(f"<b>Conclusão:</b> {data['conclusao']}", subtitle_style))
+
+        doc.build(elements)
+
 def main(page: ft.Page):
     app = ProgramApp(page)
 
